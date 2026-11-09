@@ -1,132 +1,419 @@
 # OpenList AI 视频智能标签
 
-在 **OpenList 原文件管理界面**展示视频内容标签、中文摘要和识别状态。Python 识别服务调用 OpenList 原 API 发现视频，FFmpeg 读取真实视频画面，再请求 MiniCPM-V 4.7。无需修改 OpenList 源码，也不修改视频内容或文件名。
+[![自动化测试](https://github.com/imHansiy/openlist-ai-tags/actions/workflows/test.yml/badge.svg)](https://github.com/imHansiy/openlist-ai-tags/actions/workflows/test.yml)
+[![版本](https://img.shields.io/github/v/release/imHansiy/openlist-ai-tags)](https://github.com/imHansiy/openlist-ai-tags/releases)
+[![许可证](https://img.shields.io/github/license/imHansiy/openlist-ai-tags)](LICENSE)
 
-这是可运行的 **0.1.0 首版**。已完成真实 OpenList + OneDrive + ModelBest MiniCPM-V 4.7 在线 1B / 35B-A3B 联调，并部署于 FreeBSD；不是独立视频管理网站。安装到其他站点时仍需部署伴随服务并配置同源 `/ai/` 路由。本地 GPU 推理和所有网盘驱动尚未逐一实测，详见 [验证记录](docs/VERIFICATION.md)。
+在 **OpenList 原文件管理界面**中，为视频添加中文简介、内容标签和识别状态。使用 MiniCPM-V 4.7 理解真实视频，支持字幕联合分析；文件、播放、挂载和账号仍由 OpenList 管理。
 
-## 已实现
+**使用在线模型即可，无需本地 GPU，Docker 也不是必选项。** 本项目是第三方伴随服务与前端增强，需要在现有 OpenList 旁部署 Python 服务并接入同源 `/ai/`，不是上传一个压缩包即可启用的官方插件。
 
-- 列表 / 网格 / 图片三视图悬浮信息卡片，默认网格；视频简介、全部标签、状态和详情，支持手机点击及浅色 / 深色模式。
-- OpenList 原生搜索内检索文件名、标签与简介，点击标签、多个标签 AND 筛选、跨目录 / 网盘结果链接。
-- 默认将整部视频压成单个 MP4 提交，返回中文标签和内容摘要，并记录模型、视频时长和流量。
-- 手动目录扫描、配置目录一键扫描、定时增量扫描、大小 / 修改时间 / 哈希变化检测、去重、持久化队列。
-- 暂停 / 恢复 / 取消、失败重试、进程重启恢复、历史记录、人工标签和隐藏 AI 标签的持久化。
-- 同义词合并、常用标签、强哈希一致时的改名 / 移动结果复用、SQLite 一致性备份。
-- OpenList `/@manage` 后台内管理模型、扫描、任务、标签、日志与备份；写入式密钥更新、真实视觉连接测试、目录排除、格式 / 并发 / 流量 / 超时设置。
-- 结果读取逐文件调用 OpenList 检查当前用户权限；支持用户 `base_path`，结果不使用扫描管理员权限兜底。
+已在实际 OpenList、OneDrive、FreeBSD 与 ModelBest 在线 1B / 35B-A3B 环境联调。当前为 `0.1.0` 首版；Docker 启动、本地 GPU 推理、所有存储驱动及大规模性能尚未全部实测，识别也可能出现剧情或人物细节误判。[查看验证记录](docs/VERIFICATION.md)。
 
-## 获取源码与选择部署方式
+**快速导航**：[实际截图](#实际界面) · [部署方式](#选择部署方式) · [首次使用](#首次配置与使用) · [备份与卸载](#数据备份和卸载) · [常见问题](#常见问题)
+
+## 实际界面
+
+下面来自真实部署的截图，**站点标识、目录和资源文件名已脱敏，AI 内容保留原结果**；不是静态设计图。截图仅展示功能，不表示示例剧情完全准确。
+
+### 默认卡片视图
+
+鼠标移到视频上显示悬浮卡片，查看简介、全部标签及识别操作，不再撑高文件列表。
+
+![网格视图中的 AI 视频简介与标签卡片](docs/images/view-grid.png)
+
+<details>
+<summary>展开查看列表、图片视图和手机效果</summary>
+
+**列表视图**：保持原有大小、修改时间等列，AI 信息显示在浮层。
+
+![原生列表视图与 AI 悬浮卡片](docs/images/view-list.png)
+
+**图片视图**：复用原目录返回的数据补充视频卡片，保留原生图片与目录展示。
+
+![图片视图中的视频卡片](docs/images/view-image.png)
+
+**手机端**：点击小型 AI 标记打开信息卡片。
+
+<img src="docs/images/mobile-card.png" width="320" alt="手机端 AI 视频信息卡片">
+
+</details>
+
+### 原生搜索
+
+使用 OpenList 自带的搜索按钮或 **Ctrl+K**，同一个输入框查文件名、AI 标签与简介；`#雨 #雪` 表示两个标签同时匹配。
+
+![OpenList 原生搜索中的视频标签和简介匹配](docs/images/native-search.png)
+
+### 原生管理后台
+
+进入 **`/@manage` → AI 视频标签**，配置模型和扫描目录，查看任务、标签规则与日志。首页不显示额外管理工具栏。
+
+![OpenList 后台中的插件配置](docs/images/manage-settings.png)
+
+## 功能一览
+
+| 能力 | 当前实现 |
+|---|---|
+| 视频理解 | MiniCPM-V 4.7 1B / 35B-A3B；默认整段压缩 MP4 一次提交，生成中文简介与标签 |
+| 电影分析 | 可结合文本字幕 / 画面 OCR、人物关系和补充清晰画面复核；支持证据缓存 |
+| 原生界面 | 列表、网格、图片三视图悬浮卡片，手机点击、深浅模式、原文件菜单增强 |
+| 搜索筛选 | 原生搜索内匹配标签 / 简介、多标签 AND、当前目录递归或根目录跨挂载检索 |
+| 自动发现 | 手动扫描配置目录、定时增量扫描、变化检测、已完成跳过 |
+| 任务队列 | 持久化、暂停 / 恢复 / 取消、失败重试、重启恢复、历史与错误日志 |
+| 标签管理 | AI / 人工标签区分、隐藏标签、同义词、常用标签；重新识别保留人工覆盖 |
+| 权限与数据 | 逐文件校验当前 OpenList 用户权限；SQLite 存储、一致性备份；不改视频和文件名 |
+
+可靠文件哈希存在时可复用移动 / 改名后的结果；只有大小和时间相同不会直接合并。普通用户可查看有权限的视频结果；扫描、编辑公共标签和配置限管理员。
+
+## 安装前准备
+
+| 项目 | 要求或说明 |
+|---|---|
+| OpenList | 已部署、登录与挂载正常；UI 适配随版本可能变化，升级前需回归 |
+| 管理身份 | 推荐长期管理员 API token；也支持管理员账号密码，交互式二步验证需改用 token |
+| 模型 | 自己申请的在线 API key，或实际兼容该模型和视频输入的推理服务 |
+| Python | 3.11+，推荐 3.12；Docker 方式自带 Python |
+| 视频处理 | FFmpeg / ffprobe；字幕画面 OCR 另需 Tesseract 与 `chi_sim` 字库 |
+| 网络 | 服务端能连接 OpenList、网盘下载域名和模型 API；浏览器不直连模型 |
+| 存储 | 持久数据目录，以及视频压缩临时空间；默认中间文件预算 512 MiB / 任务 |
+| 前端接入 | 同一 OpenList 域名下的 `/ai/` 路由，以及一次脚本注入；下文提供两种接入方式 |
+
+一次识别通常会读取源视频的大部分或全部内容。23 MiB 是**发给模型的压缩副本**预算，不是网盘源文件读取流量。请先用一个短视频完成部署验收，再扩大扫描范围。
+
+## 选择部署方式
+
+| 你的环境 | 从哪里开始 |
+|---|---|
+| Linux / NAS，已有 Python 与反向代理 | [方案 A：Python + 原域名接入](#方案-apython--原域名接入) |
+| 已有 Docker，希望用附带网关 | [方案 B：Docker Compose](#方案-bdocker-compose) |
+| FreeBSD / Serv00，无 sudo | [专用安装教程](docs/FREEBSD.md) |
+| Windows 或仅想先本机体验 | [方案 C：本机评估网关](#方案-c本机评估网关) |
+
+这些方式只需选一种。**`OPENLIST_URL` 必须指向原 OpenList，不能指回 AI 网关自身。**
+
+## 方案 A：Python + 原域名接入
+
+适合保留现有域名、反向代理和 OpenList 部署。以下以 Python 已为 3.11+ 的 Debian / Ubuntu 为例。
+
+### 1. 下载与安装依赖
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git python3 python3-venv ffmpeg
+# 只有需要从画面识别字幕时才安装：
+sudo apt-get install -y tesseract-ocr tesseract-ocr-chi-sim
+
+git clone https://github.com/imHansiy/openlist-ai-tags.git
+cd openlist-ai-tags
+python3 --version
+python3 -m venv .venv
+.venv/bin/python -m pip install .
+cp .env.example .env
+chmod 600 .env
+mkdir -p data
+chmod 700 data
+```
+
+没有 sudo 的环境可复用主机已有依赖；FreeBSD 请使用[对应教程](docs/FREEBSD.md)。也可从 [Releases](https://github.com/imHansiy/openlist-ai-tags/releases) 下载完整源码 ZIP。wheel 只包含 Python 包和前端资源，部署模板、脚本和本文以源码仓库为准。
+
+### 2. 编辑 `.env`
+
+下面是在线 35B-A3B 的示例，替换地址和凭据，不要原样保留占位符：
+
+```dotenv
+# 原 OpenList 直连地址，不是新增的 AI 服务端口。
+OPENLIST_URL=http://127.0.0.1:5244
+OPENLIST_TOKEN=替换为管理员API令牌
+# 使用 token 时账号密码可以留空。
+OPENLIST_USERNAME=admin
+OPENLIST_PASSWORD=
+
+# 海外模型平台示例；国内平台改用 https://api.modelbest.cn/v1
+MODEL_BASE_URL=https://api.modelbest.ai/v1
+MODEL_NAME=MiniCPM-V-4.7-35B-A3B
+MODEL_API_KEY=替换为当前平台的模型密钥
+MODEL_NATIVE_VIDEO=true
+
+# 按挂载实际返回的下载 / CDN 域名配置，不要填 *。
+MEDIA_ALLOWED_HOSTS=*.sharepoint.com,*.1drv.com
+AI_PROXY_ENABLED=false
+```
+
+没有管理员 token 时，将 `OPENLIST_TOKEN` 留空，并填写管理员账号与密码，服务会登录并刷新身份。密钥与账号不会发给浏览器。
+
+`MEDIA_ALLOWED_HOSTS` 是**媒体下载主机白名单**，不是网盘目录名；OpenList 自己的同 origin 自动允许。OneDrive 示例未必涵盖你的全部下载域名，遇到白名单错误时按日志中的可信主机逐个补充，重启 AI 服务。私有 NAS 媒体可通过 OpenList 本身的下载代理提供，详见[媒体白名单](docs/DEPLOYMENT.md#媒体白名单)。
+
+### 3. 启动 AI 服务
+
+```bash
+.venv/bin/python -m uvicorn aitags.app:app \
+  --host 127.0.0.1 --port 8787 --workers 1 --no-access-log
+```
+
+另开终端检查：
+
+```bash
+curl -f http://127.0.0.1:8787/ai/health
+# 预期：{"status":"ok","version":"0.1.0"}
+```
+
+此时只说明服务启动，不代表模型和网盘已经连通。保持 **单 worker、单服务副本**，避免重复调度；默认并发 1。生产部署使用系统服务或进程守护，见下方[常驻运行](#常驻运行与升级)。
+
+### 4. 在现有 HTTPS 站点增加 `/ai/`
+
+在现有 OpenList 的 nginx `server` 中加入以下配置，保留原 `/` 代理：
+
+```nginx
+location /ai/ {
+    proxy_pass http://127.0.0.1:8787;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 1900s;
+    client_max_body_size 64k;
+    add_header Cache-Control "no-store" always;
+}
+```
+
+注意 `proxy_pass` 末尾**没有 `/`**，这样 `/ai/api/...` 前缀会保留。测试配置后重载 nginx。若 nginx 在容器内，`127.0.0.1` 指容器自身，需要换成它能访问的 AI 服务地址。
+
+假设自己的 OpenList 域名是 `https://files.example.com`：
+
+```bash
+curl -f https://files.example.com/ai/health
+```
+
+确认 HTTPS 同源健康检查返回 JSON，再安装前端脚本。
+
+### 5. 注入前端增强脚本
+
+在项目目录、使用同一份 `.env` 里的管理凭据执行：
+
+```bash
+OPENLIST_URL=https://files.example.com .venv/bin/python scripts/integrate.py install
+```
+
+这里**只为安装命令临时使用公开域名**：安装器会检查同源 `/ai/health`，而原直连端口通常没有这条路由。后台服务的 `.env` 仍保留原 OpenList 直连地址，避免代理循环。
+
+安装器保留原有自定义 body 内容，添加带标记的脚本后回读验证；重复执行不会重复安装。刷新原域名页面，进入 `https://files.example.com/@manage`，侧栏应出现「AI 视频标签」。不要再叠加整页网关注入。
+
+## 方案 B：Docker Compose
+
+需要已运行的 Docker Engine、Compose v2 和现有 OpenList；本项目不会启动或替换 OpenList 本体。
 
 ```bash
 git clone https://github.com/imHansiy/openlist-ai-tags.git
 cd openlist-ai-tags
-```
-
-模型可以直接使用在线 API，**不要求本地推理或 Docker**。FreeBSD / Serv00 用户请看 [无 sudo 部署](docs/FREEBSD.md)；普通 Python 环境看下方「本机 Python 运行」，已有 Docker 环境也可使用以下方式。完整部署、备份及卸载见 [部署说明](docs/DEPLOYMENT.md)。
-
-## 可选：现有 OpenList + Docker
-
-需要 Docker Engine、Docker Compose v2，以及一个已经正常运行的 OpenList。不要用本项目替换已有 OpenList 数据目录。
-
-```bash
 cp .env.example .env
-# 编辑 .env：OpenList 地址、管理员 API token 或账号密码、模型密钥、媒体域名白名单
+# 按上方说明填写原 OpenList、模型、凭据和媒体白名单。
 docker compose up -d --build
+docker compose ps
+curl -f http://127.0.0.1:8787/ai/health
 ```
 
-打开 `http://127.0.0.1:8787`，看到的是现有 OpenList 原页面，网关会自动注入 AI 功能。使用原账号登录即可。
+容器内访问宿主机 OpenList 时，可以使用 `.env.example` 的 `http://host.docker.internal:5244`。但原 OpenList 如果只监听宿主机 `127.0.0.1`，容器通常仍不能连到它，需要调整可达地址或容器网络，并按自己的防火墙规则限制访问。其他容器可使用共享网络中的服务名，不能把容器里的 `localhost` 当作宿主机。
 
-默认仅监听本机。服务器公开使用时，将现有 HTTPS 反向代理指向该网关；或者按 [部署说明](docs/DEPLOYMENT.md) 仅转发 `/ai/`，再运行一条脚本安装。**OpenList 原服务端口不能指回 AI 网关**，否则会形成代理循环。
+附带 nginx 网关仅在宿主机 `127.0.0.1:8787` 暴露。打开这个入口看到的是原 OpenList 页面，网关自动注入 AI 脚本，**不需要再运行 `integrate.py install`**。
 
-`.env` 示例的 `host.docker.internal:5244` 指宿主机 OpenList。若 OpenList 在另一个容器网络中，使用其可访问的服务地址；外部 HTTPS 地址同样支持。管理凭据和模型密钥均不进入前端资源、Git 或 SQLite 备份。管理员在设置页填写的新密钥仅写入服务端 `model-secret.json`，不会回显。
+生产使用时，将原站的 HTTPS 反向代理目标改为该网关，并保留原 OpenList 作为网关上游。异机访问先配置 HTTPS 入口；不建议直接把 AI 服务单独暴露到公网。部署机器上本地检查通过后，再验证公开域名的 `/ai/health`、登录、文件浏览与播放。
 
-## 本机 Python 运行
+数据保存在命名卷 `ai-data`；CPU、内存和临时目录限额见 [Compose 部署说明](docs/DEPLOYMENT.md)。**Docker 配置已经提供，但当前项目尚未完成容器启动实测**，不能把 Python / FreeBSD 联调结果视为 Docker 验收。
 
-需要 Python 3.11+、`ffmpeg` 和 `ffprobe` 位于 PATH。
+## 方案 C：本机评估网关
+
+用于先体验界面，生产更推荐 nginx 同源接入。安装 Python 3.11+、FFmpeg / ffprobe，获取源码后执行：
 
 ```bash
 python -m venv .venv
-# Windows: .venv\Scripts\Activate.ps1
-# Linux: source .venv/bin/activate
-pip install -e ".[test]"
-cp .env.example .env
-# 修改 .env，设置 AI_PROXY_ENABLED=true，填写现有 OpenList 连接信息
+# Linux / macOS：
+source .venv/bin/activate
+# Windows PowerShell 改用：.venv\Scripts\Activate.ps1
+python -m pip install .
+```
+
+复制 `.env.example` 为 `.env`（PowerShell 可用 `Copy-Item .env.example .env`），填写上面的 OpenList、模型和白名单配置，额外设置：
+
+```dotenv
+AI_PROXY_ENABLED=true
+```
+
+启动并打开服务所在机器的 `http://127.0.0.1:8787`：
+
+```bash
 python -m uvicorn aitags.app:app --host 127.0.0.1 --port 8787 --workers 1 --no-access-log
 ```
 
-同样访问 `http://127.0.0.1:8787`。这是开发 / 本机评估网关，生产流量推荐使用附带的 nginx 配置。数据库默认保存在 `data/aitags.sqlite3`。不要同时启动多个工作进程或多个服务副本。
+此方式代理原 OpenList 页面并自动注入脚本，无需安装自定义 body。该临时入口的登录会话与原域名分开，原站 OAuth、跨域和特定下载方式可能需要进一步配置。[生产接入说明](docs/DEPLOYMENT.md)。
 
-## 使用流程
+## 首次配置与使用
 
-1. 使用原 OpenList 管理员登录，进入视频目录。
-2. 进入 `/@manage` → **AI 视频标签**，配置模型地址和模型名，必要时更新模型密钥；点击真实视觉连接测试。
-3. 填写扫描目录 / 排除目录。默认定时扫描关闭，配置完成后才启动任务。
-4. 在后台 **识别任务** 中扫描已配置目录。根目录 `/` 可递归发现所有可访问挂载。
-5. 视频上出现 AI 状态标记；悬浮或点击可查看简介和标签卡片，进入完整结果后可人工编辑及重新识别。默认使用原生网格卡片视图，三种视图均支持。
-6. 使用 OpenList 原生搜索（Ctrl+K）查文件名、AI 标签和简介；点击标签也会打开该搜索。输入 `#动画 #亲情` 按多个标签共同筛选。
-7. 定时扫描在设置中填写分钟间隔，0 表示关闭。服务器必须持续运行，浏览器可以关闭。
+### 1. 保存模型与测试连接
 
-普通用户只能读取自己当前有权限访问的结果；扫描、编辑公共标签、配置、任务和日志限管理员操作。目录密码来自原 OpenList 的当前浏览器密码，仅用于本次批量查看，不保存到数据库。跨目录搜索不自动携带其他目录密码，因此受保护结果可能需要回到原目录查看。
+使用原 OpenList 管理员登录，进入 **管理 → AI 视频标签 → 模型与扫描配置**。
 
-## 模型配置
-
-ModelBest 官方服务：
-
-| 字段 | 值 |
+| 字段 | 如何填写 |
 |---|---|
-| 基础地址 | `https://api.modelbest.cn/v1` |
-| 轻量模型 | `MiniCPM-V-4.7-1B` |
-| MoE 模型 | `MiniCPM-V-4.7-35B-A3B` |
-| 认证 | 服务端 `MODEL_API_KEY` 或设置页更新密钥 |
+| 模型服务基础地址 | 海外 `https://api.modelbest.ai/v1`，国内 `https://api.modelbest.cn/v1`；包含 `/v1`，不要填控制台网址或追加 `/chat/completions` |
+| 模型规格 | `MiniCPM-V-4.7-1B` 或 `MiniCPM-V-4.7-35B-A3B`，按服务实际支持情况选择 |
+| 新模型密钥 | 如 `.env` 已配置则无需重复填写；需要更换时填入并点击「更新模型密钥」 |
+| 官方 MiniCPM 推理模式 | 默认开启，可按速度和费用要求调整 |
+| 官方接口视频采样帧数 | 默认 32；0 使用服务默认，更多帧会增加模型输入量，并不保证剧情更准确 |
 
-本地部署需支持 OpenAI 兼容的 `video_url` Base64 MP4 输入。若本地服务仅支持多图像，在环境变量中显式设置 `MODEL_NATIVE_VIDEO=false`。按官方说明可启动：
+先点「保存配置」，再点「测试已保存模型（真实视觉请求）」。测试会真实调用模型，可能消耗额度；成功只验证视觉接口，不代表长片任务已通过。
 
-```bash
-pip install "transformers[serving]>=5.18.0"
-transformers serve openbmb/MiniCPM-V-4.7-1B --port 8000 --host 0.0.0.0
+已有数据目录时，后台保存的模型与扫描设置优先于环境默认值；以后改模型地址或规格请在后台修改。后台更新过的模型密钥也优先于 `.env`，对应服务端 `data/model-secret.json`。
+
+国内与海外平台需要各自有效的 key，不能仅换 API 域名继续用另一地区密钥。不要在 Issue、截图或前端脚本里粘贴密钥。本地推理为可选项，服务须实际支持该模型及 `video_url` 输入；仅支持多图像时显式设置 `MODEL_NATIVE_VIDEO=false`，见[本地模型说明](docs/DEPLOYMENT.md#本地模型)。
+
+### 2. 配置小范围扫描
+
+- 「扫描目录」每行一个 **OpenList 路径**，例如 `/视频/电影`，不是服务器磁盘路径。
+- 「排除目录」同样每行一个路径，例如 `/视频/临时`。
+- 「视频扩展名」用逗号分隔，通常保留默认值即可。
+- 「定时扫描间隔」先设为 `0`，表示关闭；「识别并发」先保留 `1`。
+- 点「保存配置」，再进入「识别任务」，点「扫描全部已配置目录」。这个按钮扫描的是配置范围，并非无条件扫描全站。
+
+建议先配置只有少量短视频的目录。确认真实标签和简介出现后再扩大范围；配置根目录 `/` 才会递归检查扫描账号能访问的全部挂载。
+
+### 3. 查看结果与识别电影
+
+视频上出现小型 AI 标记，鼠标悬浮查看卡片，手机点击查看；状态包含未识别、识别中、完成和失败。长简介可以展开，Esc 或点击外部关闭。首次使用默认为原生网格，之后手动切换的视图由 OpenList 保存。
+
+在卡片中点击「查看完整 AI 结果」查看人物、证据和错误；管理员可重新识别。电影建议从完整详情选择「字幕与电影联合识别」：先提取文本字幕轨，无文本字幕时尝试画面 OCR，再结合整段视频与有限补充画面核对。
+
+普通扫描使用通用识别；并不默认对所有视频做电影字幕 OCR。字幕识别需要中文 OCR 依赖，也更耗 CPU。资源不足、无字幕或视频太大时可失败，任务会记录原因，不会修改原视频。
+
+### 4. 搜索与编辑标签
+
+- 打开原生搜索或按 **Ctrl+K**：输入 `城市` 匹配标签 / 简介，文件名搜索仍由 OpenList 处理。
+- 输入 `#动画 #亲情`：要求同时具有两个标签；普通多词也是 AND 关系。
+- 点击标签会打开同一个原生搜索，并选择文件范围；搜索文件夹时不检索视频内容。
+- 在当前目录搜索覆盖其子目录；在根目录搜索可跨挂载找视频。
+- AI 匹配和原生文件名结果去重；两类结果分别分页，「继续查找标签与简介匹配」继续读取 AI 索引候选，不代表已有可见结果。
+- 完整详情里可填写逗号分隔的人工标签，取消勾选隐藏 AI 标签，点「保存标签」。重新识别会保留人工标签和隐藏选择。
+- 「标签规则」中管理同义词和常用标签。权限受限或需其他目录密码的视频不会因 AI 索引而被额外授权。
+
+原生文件名搜索需要 OpenList 自身启用搜索索引；本插件不自动创建或重建它的文件索引。若原站完全关闭搜索，需要先在 OpenList 中启用原生搜索入口。
+
+### 5. 定时任务与失败重试
+
+小范围验收后，可把扫描间隔设为所需分钟数并保存。服务需要常驻，关闭浏览器不会丢失队列。
+
+「识别任务」可暂停、恢复、取消或重试失败任务。暂停只停止领取新工作，已开始的任务可能完成；取消后的模型请求不保证免计费。重启会恢复未完成工作，但若模型响应后、数据库提交前中断，仍可能再次消耗一次推理请求。失败原因可在「历史与错误日志」查看。
+
+## 常驻运行与升级
+
+Python 方式的启动命令在关闭终端后可能退出，需要 systemd、进程管理器或 FreeBSD daemon。下面是 Linux systemd 示例，**把 `YOUR_USER` 和项目绝对路径替换为实际值**，项目与数据目录应属于运行用户：
+
+```ini
+# /etc/systemd/system/openlist-ai-tags.service
+[Unit]
+Description=OpenList AI video tags
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/opt/openlist-ai-tags
+EnvironmentFile=/opt/openlist-ai-tags/.env
+ExecStart=/opt/openlist-ai-tags/.venv/bin/python -m uvicorn aitags.app:app --host 127.0.0.1 --port 8787 --workers 1 --no-access-log
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
 ```
 
-插件填写 `http://host.docker.internal:8000/v1` 和 `openbmb/MiniCPM-V-4.7-1B`。换用 35B-A3B 时同时更换服务实际加载模型和请求模型名。模型运行环境、权重下载、GPU / 内存容量由部署者准备；插件镜像不包含数 GB 的模型权重。[本地部署及模型说明](docs/DEPLOYMENT.md#本地模型)。
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now openlist-ai-tags
+sudo systemctl status openlist-ai-tags
+journalctl -u openlist-ai-tags -n 100 --no-pager
+```
 
-## 性能与边界
+从前台切换到 systemd 前先停止前台实例，不要同时启动两份。此为通用服务配置示例，当前项目实际守护部署在 FreeBSD，未对所有 Linux 发行版逐一验收。
 
-- 默认按时长调整分辨率、帧率和码率，保留完整画面时间轴，将无音轨 MP4 压到 23 MiB 以内后一次提交。ModelBest 海外接口实测请求体上限为 32 MiB，包含 Base64 和 JSON。模型仍可能遗漏细节或误判剧情。
-- 视频压缩采用 veryfast 双遍编码。先解码成低分辨率无损中间视频，默认最多 512 MiB（环境变量 `VIDEO_WORK_MAX_BYTES`），仅从网盘读取一次。模型先进行自然语言内容分析，再用一次纯文本请求整理摘要、标签和不确定性。
-- 已知为电影时，可在 AI 详情中选择「按电影剧情识别」，使用电影人物、关系变化和主线提示词。API 对应 `POST /ai/api/recognize` 的 `content_type: "movie"`，类型随任务持久化。普通识别使用通用提示词。
-- 「字幕与电影联合识别」先提取文本字幕轨。无文本轨时，从原片字幕区域按约 1 秒间隔做中文 OCR、过滤低置信度文字并合并重复行。OCR 可能漏掉短暂对白或错认人名。裁剪后保持文字比例并添加留白；字幕字库不同会影响可读率，快速字库读不到时可清空 `TESSDATA_DIR`，使用系统标准字库。默认逐步探测最多 19 个时间点，比较两种常见字幕位置；至少两个位置读到可靠文字后才选择区域，全部为空或证据不足时明确失败；可用 `SUBTITLE_OCR_AUTO_CROP=false` 关闭自动选择，并用 `SUBTITLE_OCR_CROP=x,y,width,height`（画面比例）调整。主机需安装 Tesseract 和 chi_sim 字库，Docker 镜像已包含。字幕提取增加 CPU 时间，长片可将「解码总超时」调到 3600 秒。
-- 联合识别将字幕时间轴与整片视频一并提交。资源文件名仅作片名候选，人物关系需对白和画面支持。详情页可下载提取的 SRT；字幕存于服务端数据目录，下载时重新校验 OpenList 视频权限。API 联合识别使用 `use_subtitles: true`，下载使用 `POST /ai/api/subtitles`。
-- 联合识别默认依据字幕中的身份介绍和关系对白补充最多 5 张原片清晰画面。整片 MP4 保留在同一请求中，补充画面受总请求大小限制。截图里的字幕可能属于画外人物，因此摘要优先保留主线，未核实的配角关系放入不确定性。
-- 官方 MiniCPM 4.7 默认启用推理模式，视频请求采样帧数为 32。设置页可关闭推理或调整采样数量（0 使用服务默认，最多 128）。更多帧未必提高剧情准确度，且会增加模型输入量；结果保留实际视频、图像及推理 token 数。自定义推理服务沿用标准兼容请求。
-- 私有 `evidence-cache/` 默认最多 64 MiB、8 个文件，复用有效期 24 小时；清理在后续缓存读写时执行。缓存只保存压缩证据，不保存源视频或密钥。每次任务仍读取 OpenList 当前文件信息并检查权限；源文件指纹（大小、修改时间及存储提供的哈希）、字幕模式或提取配置变化后重新提取。通过 `EVIDENCE_CACHE_MAX_BYTES=0` 可关闭复用，目录可手动清理。SQLite 备份不包含缓存。
-- 保存提取的字幕时，备份数据目录中的 `subtitles/`。管理界面的 SQLite 备份仅包含数据库。
-- 整片模式通常读取源文件的大部分或全部数据，仅将压缩后的副本存入临时目录。默认读取流量上限 3 GiB、转码总超时 30 分钟、识别并发 1。超限或无法覆盖完整时长时任务会失败，界面显示原因。
-- 转码链接失效、缺失时长、HLS / DRM 等可能导致失败。当前只接受普通文件容器，不读取播放列表。显式启用抽帧兼容模式时，默认读取上限为 128 MiB。
-- 跨目录搜索采用分页索引候选 + 实时权限校验，不返回全局标签统计或受保护数量。大库可能需要继续加载候选；当前没有专门的全文搜索引擎。
-- 移动 / 改名只有在提供可靠全文件哈希时自动复用。没有哈希就重新识别，避免仅凭相同大小 / 时间错误合并。不会自动识别同一视频的转码版本。
-- 密钥来自 `.env` 或服务端数据目录。数据库备份不包含密钥。生产上请保护数据目录权限，并对公网入口启用 HTTPS。
-- UI 通过官方自定义脚本能力增强 DOM，升级后需要跑兼容性检查；不是 OpenList 官方稳定插件 ABI。列表 / 网格 / 右键菜单选择器集中在 `aitags/static/ai.js`。
-- OpenList 本体不依赖 AI 服务。停用注入即可完全恢复原界面；插件异常不阻止原播放、浏览和下载。
-
-## 测试与维护
+升级前等待识别任务结束并备份，然后更新代码、重新安装、重启：
 
 ```bash
-pip install -e ".[test]"
+git pull --ff-only
+.venv/bin/python -m pip install --upgrade .
+sudo systemctl restart openlist-ai-tags
+curl -f https://files.example.com/ai/health
+```
+
+Docker 方式升级使用 `docker compose up -d --build`；FreeBSD 使用[专用运维命令](docs/FREEBSD.md#运行与恢复)。若按 Releases 版本部署，升级时选择目标版本，先阅读更新说明。
+
+## 数据、备份和卸载
+
+| 内容 | Python 默认位置 | 是否包含在后台数据库备份中 |
+|---|---|---|
+| 标签、简介、设置、任务、历史 | `data/aitags.sqlite3` | 是 |
+| 后台更新的模型密钥 | `data/model-secret.json` | 否，需单独私密备份 |
+| 环境配置与 OpenList 凭据 | 项目 `.env` | 否，需单独私密备份 |
+| 提取的字幕 | `data/subtitles/` | 否，需要时单独备份 |
+| 临时压缩证据缓存 | `data/evidence-cache/` | 否，可重新生成 |
+
+Docker 对应位置在 `ai-data` 命名卷内。后台「下载数据备份」使用 SQLite 一致性备份；不要在线只复制 SQLite 主文件而遗漏 WAL。恢复步骤见[持久化与备份](docs/DEPLOYMENT.md#持久化与备份)。
+
+- **方案 A**：先运行 `OPENLIST_URL=https://files.example.com .venv/bin/python scripts/integrate.py uninstall`，再移除 `/ai/` 路由并停止 AI 服务；原 OpenList 继续运行。
+- **整页网关 / Docker**：先把 HTTPS 入口恢复为原 OpenList，再停止伴随网关。`docker compose down` 保留数据卷；不要使用 `down -v`，除非确实要清空数据。
+- 插件数据与 OpenList 挂载数据库分开；卸载无需改视频、文件名、挂载或原 OpenList 数据目录。
+
+## 常见问题
+
+| 现象 | 排查方法 |
+|---|---|
+| 页面完全没有 AI 标记 | 先查同源 `/ai/health` 和 `/ai/assets/ai.js`，确认脚本注入方式正确；Ctrl+F5 刷新。也可能是前端 DOM 变更或当前目录没有视频 |
+| 后台没有「AI 视频标签」 | 使用 OpenList 管理员登录；确认脚本已加载。普通账号不显示管理入口 |
+| `/ai/health` 是 404 / HTML | 检查 `/ai/` 路由、nginx `proxy_pass` 是否保留前缀；不要直接注入脚本跳过接入步骤 |
+| `/ai/health` 是 502 | AI 进程未启动、端口 / socket 不可达，或反向代理地址指错；先检查服务日志 |
+| 安装器说健康检查不通过 | 确认公开域名 `/ai/health` 返回 JSON，并按方案 A 为安装命令临时指定公开 `OPENLIST_URL` |
+| 模型 401 或连接超时 | 核对区域、API 地址、模型名、密钥和服务端出口；浏览器能开官网不代表服务器能访问推理 API |
+| 媒体白名单错误 | 根据可信下载域名补充服务端 `.env`，然后重启；不要直接改成 `*` |
+| 大视频读取超限或超时 | 源文件读取量和模型上传大小是两回事；检查流量上限、大小上限、解码超时和可用临时空间 |
+| OCR 没读到字幕 / 人物仍有误 | 安装中文 OCR 字库，核对字幕位置和源片清晰度；模型与 OCR 都可能误判，不保证只靠重新识别就能纠正 |
+| 搜索不到已识别视频 | 核对当前目录、文件 / 文件夹范围、访问权限、标签是否被隐藏，以及 AI 候选是否还有后续页 |
+| 关闭页面后任务是否继续 | 继续，前提是服务器进程常驻；刷新页面不应丢失已保存的任务和标签 |
+
+## 长视频与资源边界
+
+默认将整段视频压为单个无音轨 MP4，在保留完整时间轴的前提下控制到 **23 MiB 以内**后一次提交。不是将电影只改成几张截图；但推理服务内部仍可能按帧采样，整片上传不等于每秒画面都被模型读到。
+
+- 默认源文件大小上限 10 GiB，实际源读取流量上限 3 GiB，解码总超时 30 分钟；这些限制互相独立，大文件通常需要按资源条件调整。
+- 中间视频预算默认 512 MiB；压缩副本、OCR 和字幕提取还会占用临时空间与 CPU。默认并发 1，先降低负载再扩大扫描。
+- 模型的 32 MiB 请求体限制来自特定海外入口实测，包含 Base64 和 JSON；不是对所有服务、所有日期的官方承诺。
+- 默认没有音频转写；发送的压缩视频无音轨。电影联合分析主要使用画面与字幕，不能当作完整的听觉理解。
+- 缓存默认最多 64 MiB / 24 小时，只保存压缩证据；指纹、模式或提取配置变化时重新读取原片。
+- 不支持 DRM、HLS / 直播；没有专门全文检索引擎或全部驱动性能保证。AI 结果仍需人工核对，不能作为影视事实数据库。
+
+更多参数、OCR 裁剪与人物关系复核过程见 [视频、字幕与资源限制](docs/VIDEO_PIPELINE.md)。
+
+## 开发与测试
+
+```bash
+python -m pip install -e ".[test]"
 pytest -q
 npm ci
 npx playwright install chromium
 npm test
 ```
 
-后端测试包含真实 FFmpeg 测试视频抽帧；其余队列和权限测试使用明确隔离的测试替身，不会访问个人网盘或消耗模型额度。UI 自动化使用模拟 OpenList DOM / API 验证适配器，真实网盘 + 模型联调另见验证记录。CI 在 Linux 上执行两组测试。
+发布时 GitHub CI 的 **43 项后端、20 项 UI 测试通过**。后端包含真实 FFmpeg 小视频测试，其余权限 / 队列使用隔离替身；UI 测试使用可控 DOM / API。实际站点、网盘和模型联调另见[验证记录](docs/VERIFICATION.md)，不把模拟测试当作真实内容准确率验证。
 
-- [部署、反向代理、备份、卸载](docs/DEPLOYMENT.md)
-- [Serv00 / FreeBSD 无 Docker 部署与当前状态](docs/FREEBSD.md)
-- [用户操作与故障排查](docs/USER_GUIDE.md)
-- [架构、权限模型和官方源码依据](docs/ARCHITECTURE.md)
-- [实际验证结果与尚未验证项](docs/VERIFICATION.md)
+| 文档 | 内容 |
+|---|---|
+| [部署说明](docs/DEPLOYMENT.md) | nginx、Compose、媒体白名单、恢复与卸载 |
+| [FreeBSD / Serv00](docs/FREEBSD.md) | 无 sudo、私有 socket、daemon、cron |
+| [用户指南](docs/USER_GUIDE.md) | 后台管理、扫描、标签和故障排查 |
+| [视频处理说明](docs/VIDEO_PIPELINE.md) | 整片压缩、字幕、缓存、模型与资源限制 |
+| [架构与兼容性](docs/ARCHITECTURE.md) | 模块、权限模型、官方源码依据 |
+| [实际验证](docs/VERIFICATION.md) | 已验证、未验证及历史记录 |
+| [版本更新](CHANGELOG.md) | 已发布版本 |
 
-MIT 许可证；OpenList 和模型项目的许可证分别以各自官方仓库为准。
+问题反馈请到 [Issues](https://github.com/imHansiy/openlist-ai-tags/issues)，附上 OpenList 版本、部署方式、脱敏后的错误日志和复现步骤。请勿提交密钥、账号、签名下载地址或未脱敏的数据库。
 
-电影识别结果包含主要人物、关系、证据和主线摘要；未能可靠核实的事件顺序和时间点不在电影详情中展示。模型先核对人物和事件先后，再生成摘要；无法确认的姓名、血缘或生死应保留不确定性。人物信息与标签一样，受原文件访问权限保护。提示词更新可复用同一文件的压缩证据缓存，无需重新整片解码和 OCR。补充画面策略升级时，只对原片做有限次随机读取以更新清晰画面（单次最多 64 MiB、240 秒），不重压 MP4 或重跑字幕；文件变化、缓存过期或提取配置变化时会重新读取原片。
-
-带字幕的电影模式会用关键对白窗口与清晰画面复核初稿，再保存人物与摘要；引用时间表示对白或画面在视频中的位置，不等于回顾事件实际发生的时间。复核仍由配置的同一模型服务完成，视频只在首轮上传，复核仅使用选定画面和文字。
+MIT 许可证，详见 [LICENSE](LICENSE)。本项目不是 OpenList / ModelBest 官方插件；OpenList 和模型的许可证以各自项目为准：[OpenList](https://github.com/OpenListTeam/OpenList)、[MiniCPM-V](https://github.com/OpenBMB/MiniCPM-V)。

@@ -37,6 +37,8 @@ python scripts/integrate.py install
 
 脚本使用 `.env` 中 OpenList 管理凭据，保留原有 `customize_body` 内容，只添加带边界标记的脚本，再回读校验。**没有同源路由时脚本拒绝安装**，避免把不可用功能注入生产页面。此方式和整页网关二选一即可。
 
+如果服务的 `.env` 使用原 OpenList 直连地址，它通常没有 `/ai/health` 路由。为安装命令临时指定已配置同源路由的公开域名，例如 `OPENLIST_URL=https://files.example.com python scripts/integrate.py install`；服务本身继续使用 `.env` 中的直连地址，不要把上游指回 AI 网关。完整安装示例见 [README](../README.md#方案-apython--原域名接入)。
+
 卸载脚本：
 
 ```bash
@@ -73,6 +75,6 @@ python scripts/integrate.py uninstall
 
 停止 `docker compose down` 不删除命名卷。方式一将公开入口恢复直连 OpenList 后即可停网关；方式二先卸载脚本再停 AI 服务。**不要使用 `down -v`，除非明确要删除全部标签数据。** 不需要删除或改动任何视频、网盘挂载或 OpenList 数据目录。
 
-## 当前机器启动
+## 当前验证范围
 
-首轮在 `http://127.0.0.1:8787` 启动本机评估网关。随后已在 Serv00 安装独立伴随服务与自启，公网接入等待模型网络出口问题解决；未改动原站自定义脚本配置。当前状态见 [FreeBSD 部署记录](FREEBSD.md)。
+本机 Python 网关和 FreeBSD 伴随部署已完成实际联调，在线模型与公网原生界面集成已有验证。Docker Engine 启动、Linux systemd 及其他驱动仍需在目标环境验收。请按 [README](../README.md) 从健康检查、同源接入到短视频识别逐项验证，历史与当前状态见 [验证记录](VERIFICATION.md)。
