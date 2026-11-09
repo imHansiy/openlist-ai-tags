@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openlist-ai-tags"
+version = "0.1.0"
+description = "OpenList native video content tags powered by MiniCPM-V"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = ["fastapi==0.162.0", "uvicorn==0.54.0", "httpx==0.28.1", "python-dotenv==1.2.2"]
+
+[project.urls]
+Repository = "https://github.com/imHansiy/openlist-ai-tags"
+Issues = "https://github.com/imHansiy/openlist-ai-tags/issues"
+
+[project.optional-dependencies]
+test = ["pytest>=8.4,<10", "pillow>=11,<13", "imageio-ffmpeg>=0.6,<1"]
+
+[tool.setuptools.packages.find]
+include = ["aitags*"]
+
+[tool.setuptools.package-data]
+aitags = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

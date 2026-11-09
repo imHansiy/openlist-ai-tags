@@ -1,0 +1,39 @@
+services:
+  ai:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment:
+      AI_PROXY_ENABLED: "false"
+      AI_DATA_DIR: /data
+    volumes:
+      - ai-data:/data
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 128
+    stop_grace_period: 45s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp:size=640m,mode=1777
+    extra_hosts:
+      - host.docker.internal:host-gateway
+  gateway:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    ports:
+      - "${AI_GATEWAY_BIND:-127.0.0.1}:${AI_GATEWAY_PORT:-8787}:80"
+    environment:
+      OPENLIST_URL: ${OPENLIST_URL:-http://host.docker.internal:5244}
+    volumes:
+      - ./deploy/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+    depends_on:
+      ai:
+        condition: service_healthy
+    extra_hosts:
+      - host.docker.internal:host-gateway
+volumes:
+  ai-data:
