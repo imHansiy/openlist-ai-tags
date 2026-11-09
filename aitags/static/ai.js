@@ -8,22 +8,6 @@
   const css = document.createElement('link');
   css.rel = 'stylesheet'; css.href = `${base}/assets/ai.css`; document.head.append(css);
   const state = { admin: false, cache: new Map(), context: null, token: null, userName: null, error: '', refreshed: 0 };
-  let defaultViewBusy=false;
-  async function ensureDefaultView(){
-    if(defaultViewBusy || localStorage.getItem('ai-card-default-v1') || !document.querySelector('.body'))return;
-    const trigger=document.querySelector('[aria-label="switch layout"]');if(!trigger)return;
-    defaultViewBusy=true;
-    try{
-      localStorage.setItem('global_default_layout','grid');
-      window.dispatchEvent(new StorageEvent('storage',{key:'global_default_layout',newValue:'grid',storageArea:localStorage}));
-      trigger.click();
-      for(let i=0;i<15;i++){
-        const items=[...document.querySelectorAll('[role="menuitem"]')].filter(x=>x.getClientRects().length);
-        if(items.length===3){items[1].click();localStorage.setItem('ai-card-default-v1','1');break;}
-        await new Promise(resolve=>setTimeout(resolve,40));
-      }
-    }finally{defaultViewBusy=false;}
-  }
   const statuses = { pending:'未识别', running:'识别中', done:'已识别', failed:'识别失败', cancelled:'已取消' };
   let videoRE = /\.(mp4|mkv|avi|mov|webm|m4v|ts|flv)$/i;
   const el = (tag, text, cls) => { const n = document.createElement(tag); if (text != null) n.textContent = text; if (cls) n.className = cls; return n; };
@@ -530,7 +514,7 @@
   async function update() {
     if(busy || document.hidden)return; busy=true;
     try {
-      await refreshAuth(); await ensureManage(); ensureToolbar();ensureNativeSearch();resumeNativeSearch().catch(()=>{});ensureDefaultView().catch(()=>{});
+      await refreshAuth(); await ensureManage(); ensureToolbar();ensureNativeSearch();resumeNativeSearch().catch(()=>{});
       if(managePath())return;
       ensureImageVideoCards();
       const rows=[...document.querySelectorAll('.list-item[href],.grid-item[href]')].map(row=>[row,rowPath(row)]).filter(([,path])=>path && videoRE.test(path));

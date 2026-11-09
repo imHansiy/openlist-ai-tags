@@ -274,17 +274,17 @@ for(const layout of ['list','grid','image'])test(`${layout} view floats AI infor
  expect(bounds.y).toBeGreaterThanOrEqual(0);expect(bounds.y+bounds.height).toBeLessThanOrEqual(400);
 });
 
-test('first visit selects native card layout once and respects later choices',async({page})=>{
+for(const legacy of [false,true])for(const layout of ['list','grid','image'])test(`native ${layout} preferences are never overwritten (legacy=${legacy})`,async({page})=>{
+ await page.addInitScript(({value,legacy})=>{localStorage.setItem('global_default_layout',value);localStorage.setItem('layoutRecord',JSON.stringify({'/videos':value}));if(legacy)localStorage.setItem('ai-card-default-v1','1');}, {value:layout,legacy});
  await boot(page);
  await page.evaluate(()=>{
   const b=document.createElement('button');b.setAttribute('aria-label','switch layout');document.body.append(b);
-  b.onclick=()=>{['list','grid','image'].forEach(layout=>{const item=document.createElement('button');item.setAttribute('role','menuitem');item.textContent=layout;item.onclick=()=>{localStorage.setItem('fixture-layout',layout);document.querySelectorAll('[role="menuitem"]').forEach(x=>x.remove());};document.body.append(item);});};
+  b.onclick=()=>{document.body.dataset.unexpectedLayoutClick='true';};
  });
- await expect.poll(()=>page.evaluate(()=>localStorage.getItem('fixture-layout'))).toBe('grid');
- expect(await page.evaluate(()=>localStorage.getItem('global_default_layout'))).toBe('grid');
- await page.evaluate(()=>{localStorage.setItem('fixture-layout','list');document.body.append(document.createElement('p'));});
  await page.waitForTimeout(600);
- expect(await page.evaluate(()=>localStorage.getItem('fixture-layout'))).toBe('list');
+ expect(await page.evaluate(()=>localStorage.getItem('global_default_layout'))).toBe(layout);
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('layoutRecord'))['/videos'])).toBe(layout);
+ expect(await page.evaluate(()=>document.body.dataset.unexpectedLayoutClick)).toBeUndefined();
  await expect(page.getByRole('menuitem')).toHaveCount(0);
 });
 test('native image view adds video cards from the existing directory response',async({page})=>{
