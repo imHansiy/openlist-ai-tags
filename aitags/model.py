@@ -22,17 +22,39 @@ CONTENT_OBSERVATION_RULES = (
     '模型无法识别或拒绝分析时明确记录局限，不根据文件名、字幕关键词或既有印象编造分类。'
     '\n人物外观标注：人物是主体且画面清楚时，按维度检查并保留有依据的中文短标签：'
     '性别呈现（偏女性化外观、偏男性化外观、中性外观或无法判断，只描述呈现，不推断性别认同或生理性别）；'
-    '粗略年龄段（仅有足够依据且可确认成年时给成年青年、中年、老年；年龄无法确认写入不确定性，'
-    '不猜具体岁数，不将未知年龄默认成年，不用年龄标签暗示已通过年龄核验）；'
+    '粗略年龄段（普通非性内容可根据充分可见线索给儿童、青少年、成年青年、中年、老年等外观年龄段；'
+    '线索不足时写年龄无法确认，不猜具体岁数；外观估计不是身份事实或年龄核验，不能把未知年龄默认成年）；'
     '发色（如黑发、棕发、金发、灰白发）、发长与发型（如短发、长发、直发、卷发、马尾、寸头、光头）；'
     '外貌特征（如眼镜、胡须、可见纹身、明显妆容）、可见肤色、非医学体型描述（如偏瘦、匀称、健壮）及服装。'
     '只标注实际看清的项目，不因发色、服装或体型推断种族、国籍、职业、健康状态或具体身份。'
     '看不到脸、头发或全身时省略相应标签，不用固定模板补齐全部维度。'
     '多人画面需在摘要里区分各人物，不能把甲的发型、乙的服装和丙的年龄拼成同一个人。'
-    '涉及疑似未成年人的性化场景时，仅报告保护性风险和不确定性，不生成性化外貌或年龄组合标签。'
+    '非性化的儿童活动也可标注中性的发型、服装和可见体型，不因此添加NSFW标签。'
+    '性化场景涉及疑似未成年人或是否成年无法确认时，仅报告保护性风险与不确定性，'
+    '不输出人物外貌、体型、细分年龄、具体性行为或相关组合标签。此规则优先于其他外观和细节要求。'
     '在核心内容标签之外保留清楚可见的区分特征，优先主体、内容分类、发色、发型和服装，'
     '不要让床单或背景颜色等次要标签挤掉主体外观。标签按证据充分度选6到20项，不为凑数量编造。'
 )
+
+
+def protect_uncertain_minor_content(result):
+    """Keep neutral all-age metadata; reduce model-flagged sexual risk to risk-only output."""
+    text=' '.join([result.get('summary',''),result.get('uncertainty',''),*result.get('tags',[])])
+    minor_text=re.sub(r'(?:没有|未发现|不存在|不涉及|不含|并非|不是).{0,8}(?:未成年人|未成年|儿童|青少年)|无(?:未成年人|未成年|儿童|青少年)','',text)
+    minor_signal=bool(re.search(r'未成年|儿童|青少年|幼童|幼女|幼男|小女孩|小男孩|少年|少女|underage|\bchild(?:ren)?\b',minor_text,re.I))
+    minor_signal |= bool(re.search(r'是否成年.{0,10}(?:无法|不能|未能).{0,6}确认|(?:无法|不能).{0,8}确认.{0,6}是否成年',text))
+    sexual_tag=any(re.search(r'性行为|性交|肛交|口交|自慰|色情|性化|情色',tag)
+        and not tag.startswith(('非','无','没有','未发现')) for tag in result.get('tags',[]))
+    risk_hint=any(re.search(r'(?:疑似|可能涉及|存在|涉及).{0,20}未成年.{0,20}性化',clause)
+        for clause in re.split(r'[。；;\n]',result.get('summary','')+' '+result.get('uncertainty',''))
+        if not re.search(r'没有|未发现|不存在|不涉及|并非',clause))
+    if not (minor_signal and (sexual_tag or risk_hint)):
+        return result
+    return {'summary':'模型提示可能涉及未成年人或无法确认成年，且存在性化内容风险；仅保留风险标记，需人工复核。',
+            'tags':['敏感内容风险','年龄需核实'],'visible_text':[],'segments':[],
+            'characters':[],'events':[],
+            'uncertainty':'这是模型风险提示，不是年龄核验或事实认定；已省略人物外观、体型及性细节。',
+            'content_review':{'status':'risk-only','reason':'possible-minor-sexual-content'}}
 
 
 def save_model_diagnostic(text, error):
@@ -379,11 +401,12 @@ def infer(sample, settings, key=None):
     except (ValueError, KeyError, IndexError, TypeError) as exc:
         save_model_diagnostic(locals().get('final_text',locals().get('response_text','')),exc)
         raise RuntimeError('模型输出 JSON 不符合约定') from None
+    result=protect_uncertain_minor_content(result)
     result['sampling'] = {'duration':sample['duration'], 'network_bytes':sample['network_bytes'],
                           'model':settings['model_name']}
     if video:
         result['sampling'].update(method='compressed-video-v1',video_bytes=sample['video_bytes'],
-                                  prompt_version='whole-video-evidence-v14',content_type=sample.get('content_type','auto'),
+                                  prompt_version='whole-video-evidence-v15',content_type=sample.get('content_type','auto'),
                                   encoding=sample.get('encoding',{}),thinking=thinking,requested_video_frames=requested_frames,
                                   context_timestamps=[f['second'] for f in sample.get('context_frames',[])[:used_context_frames]],
                                   evidence_cache_hit=bool(sample.get('evidence_cache_hit')))

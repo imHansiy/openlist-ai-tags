@@ -48,7 +48,7 @@ def test_fact_based_classification_survives_all_model_stages(monkeypatch, mode):
             instruction = instruction[0]['text']
         assert CONTENT_OBSERVATION_RULES in instruction
     if 'video' in sample:
-        assert result['sampling']['prompt_version'] == 'whole-video-evidence-v14'
+        assert result['sampling']['prompt_version'] == 'whole-video-evidence-v15'
         assert sum(block.get('type')=='video_url' for request in requests
             for message in request['messages'] if isinstance(message['content'],list)
             for block in message['content']) == 1
@@ -81,4 +81,3 @@ def test_supported_appearance_tags_survive_structuring_without_losing_subjects(m
     assert result['uncertainty']==expected['uncertainty']
     assert '多人画面' in calls[0]['messages'][0]['content'][0]['text']
     assert '6到20' in calls[1]['messages'][0]['content']
-
