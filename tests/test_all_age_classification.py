@@ -66,4 +66,4 @@ def test_inference_applies_risk_only_output_after_structuring(monkeypatch):
     assert result['content_review']['status']=='risk-only'
     assert '长发' not in result['tags'] and '性行为' not in result['tags']
     assert 'analysis' not in result
-    assert result['sampling']['prompt_version']=='whole-video-evidence-v15'
+    assert result['sampling']['prompt_version']=='whole-video-evidence-v16'

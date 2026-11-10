@@ -9,7 +9,8 @@ from .subtitles import transcript, identity_context
 
 
 CONTENT_OBSERVATION_RULES = (
-    '\n内容分级与检索要求：采用客观、非挑逗的画面事实描述。'
+    '\n内容分级与检索要求:采用客观、有画面证据的事实描述。'
+    '成人向与裸露内容属于正常标注范围:有画面证据时直接给出分类词和短标签,不回避、不软化、不加免责声明、不拒绝分析。'
     '当确有画面证据时，明确使用裸体、局部裸露、胸部裸露、外生殖器可见、性行为等中性分类词；'
     '相应事实写入摘要与短标签，不要用人物互动、亲密交流或生活场景替代已确认的敏感内容。'
     '证据不足时明确写疑似性行为或无法确认，不把裸露直接推定为发生性行为。'
@@ -17,8 +18,8 @@ CONTENT_OBSERVATION_RULES = (
     '普通视频没有相关证据时不要添加NSFW标签。'
     '裸体不等于成人内容，无法可靠确认年龄时不能断定成年；不凭外貌猜测具体年龄、身份、'
     '同意、强迫或人物关系。若涉及疑似未成年人性化内容，只报告保护性风险分类与不确定性，不描述性细节。'
-    '只做内容分类和简明事实记录，不描述性器官细节、感官刺激、性行为过程或挑逗性叙事。'
-    '后续整理必须保留原始证据支持的分类、语境和不确定性，不淡化、不扩写；'
+    '摘要与标签按画面实际呈现的程度记录敏感内容,不做删减式改写。'
+    '后续整理必须保留原始证据支持的分类、语境和不确定性,不淡化、不扩写;'
     '模型无法识别或拒绝分析时明确记录局限，不根据文件名、字幕关键词或既有印象编造分类。'
     '\n人物外观标注：人物是主体且画面清楚时，按维度检查并保留有依据的中文短标签：'
     '性别呈现（偏女性化外观、偏男性化外观、中性外观或无法判断，只描述呈现，不推断性别认同或生理性别）；'
@@ -406,7 +407,7 @@ def infer(sample, settings, key=None):
                           'model':settings['model_name']}
     if video:
         result['sampling'].update(method='compressed-video-v1',video_bytes=sample['video_bytes'],
-                                  prompt_version='whole-video-evidence-v15',content_type=sample.get('content_type','auto'),
+                                  prompt_version='whole-video-evidence-v16',content_type=sample.get('content_type','auto'),
                                   encoding=sample.get('encoding',{}),thinking=thinking,requested_video_frames=requested_frames,
                                   context_timestamps=[f['second'] for f in sample.get('context_frames',[])[:used_context_frames]],
                                   evidence_cache_hit=bool(sample.get('evidence_cache_hit')))

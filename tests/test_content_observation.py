@@ -48,7 +48,7 @@ def test_fact_based_classification_survives_all_model_stages(monkeypatch, mode):
             instruction = instruction[0]['text']
         assert CONTENT_OBSERVATION_RULES in instruction
     if 'video' in sample:
-        assert result['sampling']['prompt_version'] == 'whole-video-evidence-v15'
+        assert result['sampling']['prompt_version'] == 'whole-video-evidence-v16'
         assert sum(block.get('type')=='video_url' for request in requests
             for message in request['messages'] if isinstance(message['content'],list)
             for block in message['content']) == 1
