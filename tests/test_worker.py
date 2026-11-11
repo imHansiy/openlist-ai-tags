@@ -1,6 +1,5 @@
-import json
 from aitags.db import Database
-from aitags.worker import fingerprint,identity
+from aitags.worker import identity
 from .conftest import add_video
 import pytest
 
@@ -38,7 +37,7 @@ def test_restart_recovers_running_and_preserves_pause(env,tmp_path):
 
 def test_reidentify_preserves_manual_and_handles_change(env,monkeypatch):
     db,ol,w,c=env
-    rid=add_video(db,w,'/public/a.mp4',ol)
+    add_video(db,w,'/public/a.mp4',ol)
     db.execute("UPDATE videos SET manual='[\"人工\"]',removed='[\"城市\"]' WHERE path='/public/a.mp4'")
     w.finish_runs()
     db.execute("UPDATE directories SET state='done'")

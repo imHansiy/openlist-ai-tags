@@ -9,7 +9,6 @@ import subprocess
 import threading
 import time
 from difflib import SequenceMatcher
-from pathlib import Path
 from . import config
 
 
