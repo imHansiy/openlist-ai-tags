@@ -38,25 +38,6 @@ CONTENT_OBSERVATION_RULES = (
 )
 
 
-def protect_uncertain_minor_content(result):
-    """Keep neutral all-age metadata; reduce model-flagged sexual risk to risk-only output."""
-    text=' '.join([result.get('summary',''),result.get('uncertainty',''),*result.get('tags',[])])
-    minor_text=re.sub(r'(?:没有|未发现|不存在|不涉及|不含|并非|不是).{0,8}(?:未成年人|未成年|儿童|青少年)|无(?:未成年人|未成年|儿童|青少年)','',text)
-    minor_signal=bool(re.search(r'未成年|儿童|青少年|幼童|幼女|幼男|小女孩|小男孩|少年|少女|underage|\bchild(?:ren)?\b',minor_text,re.I))
-    minor_signal |= bool(re.search(r'是否成年.{0,10}(?:无法|不能|未能).{0,6}确认|(?:无法|不能).{0,8}确认.{0,6}是否成年',text))
-    sexual_tag=any(re.search(r'性行为|性交|肛交|口交|自慰|色情|性化|情色',tag)
-        and not tag.startswith(('非','无','没有','未发现')) for tag in result.get('tags',[]))
-    risk_hint=any(re.search(r'(?:疑似|可能涉及|存在|涉及).{0,20}未成年.{0,20}性化',clause)
-        for clause in re.split(r'[。；;\n]',result.get('summary','')+' '+result.get('uncertainty',''))
-        if not re.search(r'没有|未发现|不存在|不涉及|并非',clause))
-    if not (minor_signal and (sexual_tag or risk_hint)):
-        return result
-    return {'summary':'模型提示可能涉及未成年人或无法确认成年，且存在性化内容风险；仅保留风险标记，需人工复核。',
-            'tags':['敏感内容风险','年龄需核实'],'visible_text':[],'segments':[],
-            'characters':[],'events':[],
-            'uncertainty':'这是模型风险提示，不是年龄核验或事实认定；已省略人物外观、体型及性细节。',
-            'content_review':{'status':'risk-only','reason':'possible-minor-sexual-content'}}
-
 
 def save_model_diagnostic(text, error):
     """One bounded private diagnostic; never include prompts, request URLs or credentials."""
@@ -250,7 +231,6 @@ def infer(sample, settings, key=None):
     try:
         attempts = 1 if video else 2
         used_context_frames = len(sample.get('context_frames',[])) if video else 0
-        usage = {}
         for attempt in range(attempts):
             payload = {'model':settings['model_name'],'messages':[{'role':'user','content':content}],
                        'max_tokens':8192 if thinking else (1600 if subtitle_text or not video else 900),
@@ -402,7 +382,6 @@ def infer(sample, settings, key=None):
     except (ValueError, KeyError, IndexError, TypeError) as exc:
         save_model_diagnostic(locals().get('final_text',locals().get('response_text','')),exc)
         raise RuntimeError('模型输出 JSON 不符合约定') from None
-    result=protect_uncertain_minor_content(result)
     result['sampling'] = {'duration':sample['duration'], 'network_bytes':sample['network_bytes'],
                           'model':settings['model_name']}
     if video:

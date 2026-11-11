@@ -40,6 +40,43 @@ def test_model_flagged_risk_drops_detailed_character_output(uncertainty,tags):
     assert 'analysis' not in result
 
 
+@pytest.mark.parametrize('summary,tags',[
+    ('影片讲述一名少女的成长,成年后进入演艺行业。',['性行为','长发','中年']),
+    ('两名成年主角的情感主线,配角是一名青少年学生。',['性行为','长发','成年青年']),
+])
+def test_ambiguous_age_band_away_from_sexual_terms_keeps_metadata(summary,tags):
+    original={'summary':summary,'tags':tags,'uncertainty':'年龄段仅为外观估计。',
+              'characters':[{'name':'人物A'}],'segments':[{'description':'原始描述'}]}
+    assert protect_uncertain_minor_content(original) is original
+
+
+@pytest.mark.parametrize('summary,tags',[
+    ('青少年之间的性行为画面。',['短发','人物特写']),
+    ('人物特写。',['青少年','性行为']),
+    ('未成年角色的性化描写。',['长发']),
+])
+def test_ambiguous_age_band_next_to_a_sexual_term_still_collapses(summary,tags):
+    result=protect_uncertain_minor_content({'summary':summary,'tags':tags,
+        'uncertainty':'画面证据有限。','characters':[{'name':'人物A'}]})
+    assert result['content_review']['status']=='risk-only'
+    assert result['tags']==['敏感内容风险','年龄需核实']
+    assert not result['characters']
+
+
+def test_age_boilerplate_without_a_minor_reference_does_not_collapse():
+    original={'summary':'成年人访谈记录。','tags':['访谈','中年','短发'],
+              'uncertainty':'抽样局限:部分年龄段无法确认。'}
+    assert protect_uncertain_minor_content(original) is original
+
+
+def test_strict_mode_restores_whole_result_collapse(monkeypatch):
+    from aitags import model
+    monkeypatch.setattr(model,'PROTECT_MINOR_MODE','strict')
+    original={'summary':'影片讲述一名少女的成长,成年后进入演艺行业。','tags':['性行为','长发']}
+    collapsed=model.protect_uncertain_minor_content(original)
+    assert collapsed['content_review']['status']=='risk-only'
+
+
 def test_explicit_negated_minor_claim_does_not_erase_adult_metadata():
     original={'summary':'成年人内容分类。','tags':['性行为','中年'],
               'uncertainty':'没有未成年人；具体年龄不明。'}
